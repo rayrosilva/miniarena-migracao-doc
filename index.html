@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini Arena → miniarena.com.br — Documento de migração</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif; background:#140b16; color:#f3e8d4; line-height:1.55; }
+  .bar { position:sticky; top:0; display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:12px 20px; background:#2a1230; border-bottom:1px solid #c9a22755; }
+  .bar a { color:#f3d27a; font-weight:600; text-decoration:none; border:1px solid #c9a22788; padding:8px 14px; border-radius:8px; }
+  main { max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
+  h1,h2,h3 { color:#f3d27a; }
+  h1 { font-size:1.7rem; }
+  h2 { margin-top:2rem; border-bottom:1px solid #c9a22733; padding-bottom:.3rem; }
+  a { color:#d4a5ff; }
+  code { background:#2a1230; padding:.1em .35em; border-radius:4px; font-size:.92em; }
+  pre { background:#0c070e; padding:14px; overflow:auto; border:1px solid #c9a22733; border-radius:8px; }
+  pre code { background:none; padding:0; }
+  table { border-collapse:collapse; width:100%; margin:1rem 0; font-size:.92rem; }
+  th,td { border:1px solid #c9a22744; padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:#2a1230; color:#f3d27a; }
+  hr { border:0; border-top:1px solid #c9a22744; margin:2rem 0; }
+  ul,ol { padding-left:1.3rem; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <strong>Mini Arena — migração</strong>
+  <a href="/MIGRACAO-miniarena.com.br.md" download>Baixar .md</a>
+</div>
+<main>
+<h1>Mini Arena → miniarena.com.br  </h1>
+<h2 id="documento-nico-de-migra-o-preparat-rio">Documento único de migração (preparatório)</h2>
+<p><strong>Tipo:</strong> material de referência para outra ferramenta / operador fazer o cutover.  </p>
+<p><strong>Este documento não executa a migração.</strong> Não altera o motor financeiro.  </p>
+<p><strong>Data:</strong> 2026-09-16  </p>
+<p><strong>Domínio-alvo:</strong> <code>https://miniarena.com.br</code>  </p>
+<p><strong>Produto:</strong> Mini Arena — VTT (D&amp;D 5.5) + Mini App Telegram + loja (Mercado Pago) + coleção de dados 3D  </p>
+<p><strong>Idioma do produto:</strong> pt-BR  </p>
+<p><strong>Origem:</strong> código atual no sandbox Grok Build (pacote npm <code>miniarena</code>)</p>
+<p>Trate <strong>BLOQUEADORES</strong>, <strong>NÃO TOCAR</strong> e o <strong>checklist</strong> como contrato. Não invente URL, SKU, preço nem identidade.</p>
+<hr>
+<h2 id="sum-rio">Sumário</h2>
+<ol>
+<li><a href="#1-o-que-você-está-migrando">O que você está migrando</a></li>
+<li><a href="#2-o-que-não-é-este-app">O que NÃO é este app</a></li>
+<li><a href="#3-contrato-não-tocar">Contrato: não tocar</a></li>
+<li><a href="#4-mapa-do-produto-estado-2026-09-16">Mapa do produto (estado 2026-09-16)</a></li>
+<li><a href="#5-arquitetura-as-is">Arquitetura as-is</a></li>
+<li><a href="#6-por-que-a-hostinger-compartilhada-não-serve">Por que a Hostinger compartilhada não serve</a></li>
+<li><a href="#7-duas-topologias-possíveis">Duas topologias possíveis</a></li>
+<li><a href="#8-bloqueadores-no-código-fazer-antes-do-dns">Bloqueadores no código (fazer ANTES do DNS)</a></li>
+<li><a href="#9-variáveis-de-ambiente">Variáveis de ambiente</a></li>
+<li><a href="#10-banco-de-dados">Banco de dados</a></li>
+<li><a href="#11-como-fazer--passo-a-passo">Como fazer — passo a passo</a></li>
+<li><a href="#12-auth-google-nativo-sem-broker-grok">Auth (Google nativo, sem broker Grok)</a></li>
+<li><a href="#13-telegram-mini-app">Telegram Mini App</a></li>
+<li><a href="#14-mercado-pago">Mercado Pago</a></li>
+<li><a href="#15-assets-dados-3d-e-limites">Assets, dados 3D e limites</a></li>
+<li><a href="#16-headers-cookies-csp">Headers, cookies, CSP</a></li>
+<li><a href="#17-checklist-de-cutover">Checklist de cutover</a></li>
+<li><a href="#18-testes-depois-de-no-ar">Testes depois de no ar</a></li>
+<li><a href="#19-rollback">Rollback</a></li>
+<li><a href="#20-inventário-de-arquivos-úteis">Inventário de arquivos úteis</a></li>
+</ol>
+<hr>
+<h2 id="1-o-que-voc-est-migrando">1. O que você está migrando</h2>
+<p>O Mini Arena hoje corre em dois mundos:</p>
+<table>
+<tr><th>Superfície</th><th>URL atual</th><th>Papel</th></tr>
+<tr><td>Mini App / mesa</td><td><code>https://miniarena.grok.me</code></td><td>UI, Telegram, cookies de sessão</td></tr>
+<tr><td>Backend financeiro</td><td><code>https://miniarena.vercel.app</code></td><td>API, webhook Mercado Pago</td></tr>
+<tr><td>Auth Google</td><td><code>https://auth.grok.me</code></td><td>broker Grok (não reutilizar no .com.br)</td></tr>
+</table>
+<p><strong>Destino:</strong> um origin canônico</p>
+<pre><code>
+https://miniarena.com.br
+</code></pre>
+<p>servindo <strong>app + API + webhooks</strong>. <code>www.miniarena.com.br</code> deve responder <strong>301</strong> para o apex (sem <code>www</code>). Cookies <code>__Host-*</code> <strong>não</strong> funcionam em dois hosts ao mesmo tempo.</p>
+<p>Resultado esperado para o jogador:</p>
+<ul>
+<li>Abrir <code>https://miniarena.com.br</code> no desktop/mobile → Hub Mini Arena</li>
+<li>Abrir o Mini App no Telegram → o mesmo origin</li>
+<li>Checkout Mercado Pago, webhook Telegram e login (quando houver) no mesmo domínio</li>
+</ul>
+<hr>
+<h2 id="2-o-que-n-o-este-app">2. O que NÃO é este app</h2>
+<ul>
+<li>Não é WordPress, PHP, Laravel, HTML estático, nem SPA que se copia para <code>public_html</code>.</li>
+<li>Não roda em <strong>Hospedagem de Sites</strong> Hostinger (hPanel + Apache + PHP + MySQL).</li>
+<li>Não usa MySQL / MariaDB. O schema é <strong>Postgres</strong> (quoted camelCase, <code>timestamptz</code>, <code>on conflict</code>).</li>
+<li>Não é um <code>vite build</code> que gera só <code>dist/index.html</code>. O build gera <strong>SSR Nitro</strong> (hoje preset <code>vercel</code>).</li>
+<li>PGLite (Postgres em WASM) é <strong>só preview/dev</strong>. Produção sem <code>DATABASE_URL</code> = dados somem a cada restart.</li>
+</ul>
+<p>Se alguém disser “sobe na pasta <code>public_html</code>”, está no caminho errado.</p>
+<hr>
+<h2 id="3-contrato-n-o-tocar">3. Contrato: não tocar</h2>
+<p>Não alterar lógica, preços, SKUs nem tabelas destes módulos. Login / idade / termos <strong>não</strong> escrevem no ledger.</p>
+<table>
+<tr><th>Arquivo</th><th>Papel</th></tr>
+<tr><td><code>src/lib/shop-finance.ts</code></td><td>Ledger, crédito, estorno, períodos</td></tr>
+<tr><td><code>src/lib/shop-finance-access.ts</code></td><td>Papéis financeiro / reconciliação / user</td></tr>
+<tr><td><code>src/lib/shop-pay.ts</code></td><td>Checkout Pro / preapproval / notify URL</td></tr>
+<tr><td><code>src/lib/shop-reconcile.ts</code></td><td>Relatório de divergência (<strong>não</strong> auto-heals)</td></tr>
+<tr><td><code>src/lib/shop-skus.ts</code></td><td>SKUs cobrados (preço só no servidor)</td></tr>
+<tr><td><code>src/lib/shop-catalog.ts</code></td><td>Catálogo servidor</td></tr>
+<tr><td><code>src/lib/shop-admin.ts</code></td><td>Admin da loja</td></tr>
+<tr><td><code>src/routes/api/mercadopago.ts</code></td><td>Webhook MP</td></tr>
+<tr><td><code>src/lib/auth/server.ts</code></td><td>Better Auth (fork Hostinger: Google nativo, commit isolado)</td></tr>
+<tr><td><code>src/lib/auth/client.ts</code></td><td>Cliente Better Auth</td></tr>
+</table>
+<p><strong>Exceção controlada:</strong> no fork de deploy, <code>server.ts</code> / <code>client.ts</code> / <code>providers.ts</code> precisam de Google OAuth <strong>nativo</strong> no domínio novo. É um commit isolado. Não misturar com o ledger.</p>
+<h3>Três identidades (não fundir neste cutover)</h3>
+<table>
+<tr><th>ID</th><th>Onde</th><th>Para quê</th></tr>
+<tr><td><code>user.id</code> Better Auth</td><td><code>&quot;user&quot;</code>, <code>account_onboarding</code></td><td>login, idade, termos</td></tr>
+<tr><td><code>player_id</code> (6 dígitos)</td><td><code>shop_wallets</code>, cookie <code>ma_store</code></td><td>ouro / diamantes / PRO / PLUS</td></tr>
+<tr><td>Telegram <code>user.id</code></td><td>bot / chat</td><td>Mini App, webhook</td></tr>
+</table>
+<p>A conta Better Auth <strong>não</strong> vira <code>player_id</code> sozinha. Unificar isso é projeto à parte.</p>
+<hr>
+<h2 id="4-mapa-do-produto-estado-2026-09-16">4. Mapa do produto (estado 2026-09-16)</h2>
+<p>Hub: <code>src/components/hub/Hub.tsx</code> (a landing só reexporta o Hub).</p>
+<p>Menu inferior:</p>
+<table>
+<tr><th>Item</th><th>O que faz</th></tr>
+<tr><td>Jogar</td><td>criar/entrar em sala (código 5 caracteres), mapas, fichas, NPCs. Sistema: <code>dnd-55-fanmade</code>. <code>MAX_ROOMS = 5</code></td></tr>
+<tr><td>Chat</td><td>amigos, DMs locais, perfil do amigo</td></tr>
+<tr><td>Loja</td><td>ouro, diamantes, planos PRO/PLUS, itens de mesa</td></tr>
+<tr><td>Coleção</td><td>hub com 4 cards: <strong>COMUNS</strong>, <strong>EXÓTICOS</strong>, <strong>TEMPORADAS</strong>, <strong>PROMOCIONAIS</strong></td></tr>
+<tr><td>Tutorial</td><td>textos mestre / jogador / mesa</td></tr>
+<tr><td>Opções</td><td>sons, temas, <strong>Perfil</strong>, sair da mesa</td></tr>
+</table>
+<h3>4.1 Entrada (login / idade / termos)</h3>
+<ul>
+<li>Rota <code>/</code> <strong>não exige login</strong>. Telegram Mini App entra direto no Hub (<code>RequireReady</code>: se não há <code>user</code>, renderiza o Hub).</li>
+<li><code>/login</code> redireciona para <code>/</code>. A tela <code>LoginScreen.tsx</code> existe no código mas a rota não a mostra.</li>
+<li>Se no futuro houver sessão Better Auth: <strong>Conta → Idade (18+) → Termos/Privacidade → Hub</strong>.</li>
+<li>Idade: só mês + ano. Versão <code>age-gate-v1</code>. Termos <code>terms-v1</code>, privacidade <code>privacy-v1</code>.</li>
+<li><strong>Não recolocar login obrigatório neste cutover</strong> sem spec. O Telegram depende da entrada direta.</li>
+</ul>
+<p><strong>Sair</strong> em Opções sai da <strong>mesa</strong> (navega para <code>/</code>). Não chama <code>signOut()</code> da conta.</p>
+<h3>4.2 Mesa (<code>/table</code>)</h3>
+<ul>
+<li>Grid 2D, tokens, HP, iniciativa, fichas 5.5.</li>
+<li>Dados 3D: <code>@3d-dice/dice-box</code> + <code>public/assets/dice-box/ammo/ammo.wasm</code>.</li>
+<li>Sync da sala: <strong>HTTP poll</strong> <code>pullRoom</code> / <code>pushRoom</code> → tabela <code>arena_rooms</code>. Sem WebSocket obrigatório. Não planejar TURN neste cutover.</li>
+<li>Mapas built-in: <code>/maps/patio.jpg</code>, <code>caverna.jpg</code>, <code>clareira.jpg</code>. Upload custom até 4 MB.</li>
+<li>nginx: <code>client_max_body_size 20m;</code></li>
+</ul>
+<h3>4.3 Perfil (Opções → Perfil)</h3>
+<ul>
+<li>Avatar <strong>quadrado</strong> 80×80 visual. Só biblioteca (5): Guerreiro, Maga, Anão, Ranger, Ladino. Sem upload.</li>
+<li>Molduras: <code>src/lib/frames.ts</code> + <code>/media/frames/*.webp</code>. Livres: sem moldura, bronze. Cadeado: prata (nv 20), ouro (nv 50), primeira aventura, rubi, olho do dragão.</li>
+<li>Cartões de visita 16:9: <code>src/lib/calling-cards.ts</code> + <code>/media/cards/*.webp</code> (nunca PNG/GIF originais no bundle).</li>
+<li>Nome único (<code>src/lib/player-name.ts</code>), MEU ID 6 dígitos, coroa → Loja planos.</li>
+</ul>
+<h3>4.4 Coleção (atualizado)</h3>
+<p>Hub da coleção: 4 cards verticais.</p>
+<p><strong>COMUNS</strong> — 12 hexágonos 001–012. 12 cores × 6 tipos (d4…d20) = 72 dados. Runtime: GLB partilhado + <code>manifest.json</code> em <code>/assets/dice-runtime/comum/</code>. Miniaturas WebP. Física da mesa = Dice Box (colliders). Não recriar malha a partir de <code>.diceforge</code> no browser.</p>
+<p><strong>EXÓTICOS</strong> — slot 001 <strong>Olho de Dragão</strong> (d20 teste authored).  </p>
+<ul>
+<li>Miniatura: <code>/assets/dice-photos/exotico/olho-de-dragao/d20.webp</code>  </li>
+<li>Inspeção 3D: o <code>d20.glb</code> <strong>tal como exportado</strong> (<code>SceneLoader.ImportMeshAsync</code>). O Mini Arena <strong>não reconstrói</strong> o dado.  </li>
+<li>Pacote completo esperado no ZIP de designer:</li>
+</ul>
+<pre><code>
+EXOTICO_olho_de_dragao.zip
+├── dice.glb              ← inspeção (fonte da verdade visual)
+├── d20.webp              ← thumbnail
+├── textures/skin.png     ← PNG do olho (não caminho Windows)
+├── source/*.diceforge    ← projeto original (arquivo, não runtime)
+├── dice.json
+└── manifest.json
+</code></pre>
+<p>Contrato visual authored: o olho é uma esfera <strong>interna</strong> (raio ~7 mm); números e casca (~11 mm) ficam à frente. Overlay com <code>clearDepthBefore</code> cola o olho por cima dos números — <strong>não</strong> usar isso no GLB de produção. Cor do olho através da resina exige <code>baseColor</code> da resina com G/B ≠ 0.</p>
+<p><strong>TEMPORADAS / PROMOCIONAIS</strong> — placeholders.</p>
+<p>Persistência local da coleção: <code>mini-arena-dice-col</code>. Fragmentos de desmonte: 100 por dado.</p>
+<h3>4.5 Loja (dois mundos — não misturar)</h3>
+<ol>
+<li><strong>Itens de mesa</strong> (mapas, dados, tokens) — gastam ouro <strong>no cliente</strong> (zustand, seed 120). Não é o ledger.</li>
+<li><strong>Moeda cobrada</strong> — Mercado Pago → webhook → <code>shop_wallets</code>.</li>
+</ol>
+<p>Planos (<code>src/lib/account.ts</code>): free / pro R$ 12 / plus R$ 28.</p>
+<p>Ouro (BRL): Punhado 500/4,90 · Saco 1500/12,90 · Bolsa 4000/24,90 · Arcas 10000/49,90 · Tesouro 25000/99,90.  </p>
+<p>Diamantes: Fagulha 25/7,90 · Punhado 80/19,90 · Guilda 200/39,90 · Reino 500/79,90 · Imperial 1200/149,90.</p>
+<h3>4.6 Chat</h3>
+<p>Zustand <code>mini-arena-chat-v1</code>. Amigo seed <strong>Adalberto</strong>. DMs locais. Chat de voz <strong>não</strong> está implementado — não planejar servidor de voz neste cutover.</p>
+<hr>
+<h2 id="5-arquitetura-as-is">5. Arquitetura as-is</h2>
+<table>
+<tr><th>Camada</th><th>Tecnologia</th><th>Nota</th></tr>
+<tr><td>Runtime</td><td>Node.js <strong>22.x</strong></td><td><code>package.json</code> <code>engines</code></td></tr>
+<tr><td>UI</td><td>React 19</td><td></td></tr>
+<tr><td>SSR / rotas</td><td>TanStack Start + Router</td><td><code>src/router.tsx</code>, <code>src/routes/</code></td></tr>
+<tr><td>Bundler</td><td>Vite 8 + Nitro <code>3.0.260610-beta</code></td><td><strong>preset <code>vercel</code> hoje</strong></td></tr>
+<tr><td>CSS</td><td>Tailwind v4</td><td><code>src/styles.css</code> — identidade Imperial Void (hue ~294, dourado)</td></tr>
+<tr><td>Auth</td><td>Better Auth <code>~1.6.30</code></td><td><code>/api/auth/*</code></td></tr>
+<tr><td>DB produção</td><td><code>pg</code></td><td><code>DATABASE_URL</code></td></tr>
+<tr><td>DB preview</td><td>PGLite</td><td>sem <code>DATABASE_URL</code></td></tr>
+<tr><td>Pagamentos</td><td>Mercado Pago Checkout Pro + preapproval</td><td><code>MERCADOPAGO_ENV=test</code></td></tr>
+<tr><td>Mini App</td><td><code>telegram-web-app.js</code></td><td></td></tr>
+<tr><td>Dados 3D</td><td><code>@3d-dice/dice-box</code> + ammo.wasm + Babylon (inspeção authored)</td><td><code>optimizeDeps.exclude</code> + <code>ssr.external</code></td></tr>
+<tr><td>Estado cliente</td><td>zustand persist</td><td><strong>não</strong> é fonte da loja cobrada</td></tr>
+</table>
+<h3>Rotas HTTP</h3>
+<table>
+<tr><th>Rota</th><th>Comportamento</th></tr>
+<tr><td><code>/</code></td><td>Hub (sem login)</td></tr>
+<tr><td><code>/login</code></td><td><code>Navigate</code> → <code>/</code></td></tr>
+<tr><td><code>/idade</code></td><td>gate 18+</td></tr>
+<tr><td><code>/legal</code> <code>/termos</code> <code>/privacidade</code></td><td>termos (públicos)</td></tr>
+<tr><td><code>/table</code></td><td>mesa</td></tr>
+<tr><td><code>/loja</code> <code>/loja/auth/continue</code></td><td>loja / ticket</td></tr>
+<tr><td><code>/pagamento/$status</code></td><td>retorno MP</td></tr>
+<tr><td><code>/api/auth/$</code></td><td>Better Auth GET+POST</td></tr>
+<tr><td><code>/api/mercadopago</code></td><td>GET health; POST HMAC</td></tr>
+<tr><td><code>/api/telegram</code></td><td>secret token</td></tr>
+<tr><td><code>/api/wallet</code></td><td>cookie <code>ma_store</code></td></tr>
+<tr><td><code>/api/store/session</code></td><td>sessão loja</td></tr>
+<tr><td><code>/api/purchases/$purchaseId/status</code></td><td>status compra</td></tr>
+</table>
+<p>Não existe <code>/api/rtc</code>. Não criar neste cutover.</p>
+<h3>Build atual</h3>
+<pre><code>
+npm run build
+  = scripts/with-app-env.mjs → vite build
+  + scripts/fix-ssr-exports.mjs
+  + scripts/migrate.mjs
+</code></pre>
+<p><code>vite.config.ts</code> usa <code>nitro({ preset: &quot;vercel&quot;, serverDir: &quot;./server&quot; })</code>.  </p>
+<p>Output: <code>.vercel/output/functions/__server.func/</code>.  </p>
+<p><code>scripts/fix-ssr-exports.mjs</code> é <strong>patch do preset Vercel</strong>. Outro preset (Node no VPS) exige revalidar ou adaptar o patch.</p>
+<p>Dev: <code>npm run dev</code> em <code>0.0.0.0:8080</code>. Não usar <code>vite preview</code> como produção.</p>
+<h3>URLs hardcoded que QUEBRAM o domínio novo</h3>
+<table>
+<tr><th>Arquivo</th><th>Problema</th></tr>
+<tr><td><code>src/lib/telegram.ts</code></td><td><code>PUBLISHED_APP_URL = &quot;https://miniarena.grok.me&quot;</code>. <code>miniAppUrl()</code> se o origin <strong>não</strong> contém <code>grok.me</code> <strong>devolve grok.me</strong>. No <code>.com.br</code> o Mini App aponta para o sítio antigo. <strong>Bloqueador.</strong></td></tr>
+<tr><td><code>src/lib/telegram-bot.server.ts</code></td><td><code>MINI_APP_URL</code> grok.me; bot <code>Miniarenavtt_bot</code></td></tr>
+<tr><td><code>src/lib/shop-pay.ts</code></td><td>fallback notify = grok.me <code>/api/mercadopago</code></td></tr>
+<tr><td><code>src/lib/auth/preview.ts</code></td><td>issuer <code>auth.grok.me</code> — <strong>proibido</strong> em produção Hostinger</td></tr>
+<tr><td><code>.env.example</code></td><td>ainda documenta grok.me / vercel.app</td></tr>
+</table>
+<p><code>src/lib/app-urls.ts</code> já lê <code>MINIARENA_APP_URL</code> / <code>MINIARENA_API_URL</code> e recusa URL que não seja <code>https://</code>. Em produção <strong>setar</strong> as env.</p>
+<hr>
+<h2 id="6-por-que-a-hostinger-compartilhada-n-o-serve">6. Por que a Hostinger compartilhada não serve</h2>
+<p>Plano <strong>Hospedagem de Sites</strong> / <code>public_html</code>:</p>
+<ol>
+<li>Sem processo Node persistente para SSR Nitro.</li>
+<li>MySQL quebra o schema Postgres.</li>
+<li>Webhooks MP/Telegram precisam de POST no mesmo app Node.</li>
+<li>WASM + cookies <code>__Host-</code> exigem HTTPS na frente do Node.</li>
+<li>O build não gera um site estático.</li>
+</ol>
+<p><strong>O que a Hostinger pode ser neste projeto:</strong></p>
+<ul>
+<li><strong>Registo DNS do domínio</strong> <code>miniarena.com.br</code> (sempre).</li>
+<li><strong>VPS (KVM)</strong> se quiser hospedar o Node na própria Hostinger.</li>
+<li><strong>Não</strong> hospedar o app no plano compartilhado.</li>
+</ul>
+<p>Porte mínimo se for VPS: <strong>2 vCPU / 4 GB RAM</strong>, Ubuntu 22.04 ou 24.04, 40 GB+ disco. Melhor: buildar fora (CI) e copiar o artefato.</p>
+<hr>
+<h2 id="7-duas-topologias-poss-veis">7. Duas topologias possíveis</h2>
+<h3>A — DNS na Hostinger, app na Vercel (menor risco)</h3>
+<p>O código <strong>já</strong> tem <code>vercel.json</code> e preset Nitro <code>vercel</code>.</p>
+<pre><code>
+jogador / Telegram
+        │
+        ▼
+miniarena.com.br  (DNS Hostinger → CNAME/A da Vercel)
+        │
+        ▼
+Vercel (Node 22 + Postgres Neon/Supabase)
+</code></pre>
+<p><strong>Quando escolher:</strong> quer o domínio .com.br no ar rápido, sem administrar Linux.  </p>
+<p><strong>O que fazer na Hostinger:</strong> só DNS + SSL (ou SSL na Vercel).  </p>
+<p><strong>O que NÃO fazer:</strong> copiar ficheiros para <code>public_html</code>.</p>
+<h3>B — Tudo no VPS Hostinger (um origin, você controla o servidor)</h3>
+<pre><code>
+jogador / Telegram
+        │
+        ▼
+nginx :443  (Let&#x27;s Encrypt, X-Forwarded-Proto, client_max_body_size 20m)
+        │
+        ▼
+Node 22  (Nitro preset node-server, PORT=3000, systemd)
+        │
+        ▼
+Postgres 15+  (mesmo VPS ou managed: Neon/Supabase/Hostinger VPS)
+</code></pre>
+<p><strong>Quando escolher:</strong> política de “tudo na Hostinger”, ou quer fugir da Vercel.  </p>
+<p><strong>Obrigatório no código:</strong> mudar preset Nitro de <code>vercel</code> para <code>node-server</code> (ou <code>node-middleware</code>) e revalidar <code>fix-ssr-exports.mjs</code>. Recusar PGLite se <code>NODE_ENV=production</code>.</p>
+<p><strong>Recomendação deste documento:</strong> se o domínio já está na Hostinger e o app já faz build Vercel, use <strong>A</strong> para o primeiro cutover. Use <strong>B</strong> só se houver motivo explícito (compliance, custo, ou recusa de Vercel).</p>
+<p>Nas duas topologias o <strong>origin canónico</strong> é <code>https://miniarena.com.br</code>.</p>
+<hr>
+<h2 id="8-bloqueadores-no-c-digo-fazer-antes-do-dns">8. Bloqueadores no código (fazer ANTES do DNS)</h2>
+<p>Estes patches são do <strong>fork de deploy</strong>. Não misturar com o ledger.</p>
+<ol>
+<li><strong><code>miniAppUrl()</code></strong> — devolver <code>miniArenaAppUrl()</code> ou <code>window.location.origin</code>, nunca forçar grok.me.</li>
+<li><strong><code>telegram-bot.server.ts</code></strong> — <code>MINI_APP_URL</code> a partir de <code>MINIARENA_APP_URL</code>.</li>
+<li><strong><code>shop-pay.ts</code> notifyUrl</strong> — só env <code>MERCADOPAGO_NOTIFICATION_URL</code> / <code>MINIARENA_API_URL</code>. Sem fallback grok.me.</li>
+<li><strong>Auth</strong> — Google nativo (<code>GOOGLE_CLIENT_ID</code> / <code>SECRET</code>). Remover <code>GROK_AUTH_*</code> e o fallback <code>grok_preview</code> do binário de produção.</li>
+<li><strong><code>trustedOrigins</code></strong> — incluir <code>https://miniarena.com.br</code>. Sem isso o POST de login devolve Invalid origin.</li>
+<li><strong><code>src/lib/db.ts</code></strong> — se <code>NODE_ENV=production</code> e não há <code>DATABASE_URL</code>, <strong>morrer</strong>. Hoje só recusa PGLite quando <code>VERCEL=1</code>.</li>
+<li><strong>CSP</strong> (<code>src/lib/http-security.ts</code>) — tirar <code>https://auth.grok.me</code> / <code>https://grok.com</code> se o fork não usar Grok; manter <code>telegram.org</code>, <code>accounts.google.com</code>, <code>&#x27;wasm-unsafe-eval&#x27;</code>.</li>
+<li><strong>Preset Nitro</strong> — Topologia A: manter <code>vercel</code>. Topologia B: <code>node-server</code> + systemd.</li>
+<li><strong>Plugin PWA Grok</strong> (<code>scripts/grok-pwa-plugin.mjs</code>) — injeta “Created with Grok” e <code>/__grok/*</code>. Decisão: remover no fork Hostinger.</li>
+<li><strong><code>safePublicOrigin</code></strong> — passar a aceitar <code>miniarena.com.br</code> via env (já entra se <code>MINIARENA_APP_URL</code> estiver certo).</li>
+</ol>
+<p>Não “aproveitar” o cutover para unificar <code>player_id</code> com Better Auth, nem para chat de voz, nem para Steam/Android.</p>
+<hr>
+<h2 id="9-vari-veis-de-ambiente">9. Variáveis de ambiente</h2>
+<p>Ficheiro no VPS: <code>/etc/miniarena.env</code> (<code>chmod 600</code>). Na Vercel: Project → Settings → Environment Variables, ambiente Production.</p>
+<p>Nunca prefixar segredo com <code>VITE_</code> (isso vai para o browser). Sem barra no fim das URLs.</p>
+<pre><code>
+NODE_ENV=production
+PORT=3000
+NITRO_PORT=3000
+
+DATABASE_URL=postgres://USER:PASS@HOST:5432/miniarena?sslmode=require
+
+BETTER_AUTH_URL=https://miniarena.com.br
+BETTER_AUTH_SECRET=   # openssl rand -hex 32 — estável; trocar invalida sessões
+
+MINIARENA_APP_URL=https://miniarena.com.br
+MINIARENA_API_URL=https://miniarena.com.br
+WEB_RETURN_URL=https://miniarena.com.br
+TELEGRAM_RETURN_URL=https://miniarena.com.br
+
+# VAZIO até existir landing https real. Não inventar hostname.
+MINIARENA_STORE_URL=
+
+MERCADOPAGO_ENV=test
+MERCADOPAGO_ACCESS_TOKEN=APP_USR-token-de-TESTE
+MERCADOPAGO_WEBHOOK_SECRET=
+MERCADOPAGO_NOTIFICATION_URL=https://miniarena.com.br/api/mercadopago
+
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+
+# Google nativo (depois do commit isolado)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+# Admin loja (opcional)
+# SHOP_ADMIN_PIN=
+# SHOP_ADMIN_TELEGRAM_IDS=
+</code></pre>
+<p><strong>NÃO setar em produção Hostinger:</strong></p>
+<ul>
+<li><code>VITE_AUTH_ENABLED=false</code></li>
+<li><code>VERCEL=1</code> (a menos que o host seja mesmo a Vercel)</li>
+<li><code>GROK_AUTH_ISSUER</code> / <code>GROK_AUTH_CLIENT_ID</code> / <code>GROK_AUTH_CLIENT_SECRET</code></li>
+</ul>
+<p><code>scripts/migrate.mjs</code> <strong>sai 0 e não cria tabelas</strong> se <code>DATABASE_URL</code> estiver vazio. Produção sem migrate = app sobe sem schema.</p>
+<hr>
+<h2 id="10-banco-de-dados">10. Banco de dados</h2>
+<p>Postgres <strong>15+</strong>. Não MySQL.</p>
+<p>Migrações em <code>migrations/0001_<em>.sql</code> … <code>0011_account_onboarding.sql</code>, rastreadas em <code>_migrations</code>. Não reescrever ficheiro já aplicado — criar <code>0012_</em>.sql</code>. O glob <strong>não desce</strong> a <code>migrations/auth/</code>.</p>
+<table>
+<tr><th>Ficheiro</th><th>Conteúdo</th></tr>
+<tr><td><code>0001_auth.sql</code></td><td>Better Auth: <code>&quot;user&quot;</code>, <code>&quot;session&quot;</code>, <code>&quot;account&quot;</code>, <code>&quot;verification&quot;</code> (camelCase <strong>quoted</strong>)</td></tr>
+<tr><td><code>0002_arena_rooms.sql</code></td><td>salas da mesa</td></tr>
+<tr><td><code>0003_telegram_chat.sql</code></td><td>bot / grupos</td></tr>
+<tr><td><code>0004_arena_write_secret.sql</code></td><td>segredo de escrita</td></tr>
+<tr><td><code>0005_shop_cms.sql</code></td><td>admin + catálogo</td></tr>
+<tr><td><code>0006_mp_orders.sql</code></td><td><code>shop_orders</code></td></tr>
+<tr><td><code>0007_shop_ledger.sql</code></td><td>purchases, wallets, subscriptions</td></tr>
+<tr><td><code>0008_shop_ledger_refunds.sql</code></td><td>transações / webhook events</td></tr>
+<tr><td><code>0009_subscription_periods.sql</code></td><td>períodos</td></tr>
+<tr><td><code>0010_store_sessions.sql</code></td><td>tickets da loja</td></tr>
+<tr><td><code>0011_account_onboarding.sql</code></td><td>idade + termos por <code>user_id</code></td></tr>
+</table>
+<p>Pooler Supabase em modo <strong>transaction</strong> (porta 6543) pode quebrar o migrate multi-statement. Usar ligação <strong>direct/session</strong> (5432) para o migrate; pooler só no runtime se testado.</p>
+<p>Opções de Postgres:</p>
+<ul>
+<li>Neon (o código já chama o backend de <code>&quot;neon&quot;</code> quando há <code>DATABASE_URL</code>)</li>
+<li>Supabase</li>
+<li>Postgres no próprio VPS (<code>apt install postgresql</code>)</li>
+</ul>
+<hr>
+<h2 id="11-como-fazer-passo-a-passo">11. Como fazer — passo a passo</h2>
+<h3>Fase 0 — Preparar o domínio na Hostinger (DNS)</h3>
+<p>Painel Hostinger → Domínios → <code>miniarena.com.br</code> → DNS.</p>
+<p><strong>Topologia A (Vercel):</strong></p>
+<ol>
+<li>Na Vercel: Add Domain <code>miniarena.com.br</code>.</li>
+<li>Na Hostinger: registo que a Vercel pedir (A ou CNAME). Apex muitas vezes precisa de <strong>A</strong> para os IPs da Vercel; <code>www</code> CNAME para <code>cname.vercel-dns.com</code>.</li>
+<li><code>www</code> → 301 para apex (redirect da Vercel ou nginx).</li>
+<li>Esperar propagação (minutos a algumas horas). <code>dig miniarena.com.br</code>.</li>
+</ol>
+<p><strong>Topologia B (VPS):</strong></p>
+<ol>
+<li>A <code>@</code> → IPv4 do VPS.</li>
+<li>AAAA se houver IPv6.</li>
+<li><code>www</code> CNAME para <code>miniarena.com.br</code> ou A para o mesmo IP + 301 no nginx.</li>
+</ol>
+<p>Não aponte o domínio para a pasta <code>public_html</code> do plano compartilhado.</p>
+<h3>Fase 1 — Patch do código (fork)</h3>
+<p>Ordem:</p>
+<ol>
+<li>Branch <code>deploy/miniarena-com-br</code>.</li>
+<li>Patches da §8 (URLs, auth, fail-closed PGLite, CSP).</li>
+<li>Topologia B: <code>nitro({ preset: &quot;node-server&quot; })</code> e testar <code>node .output/server/index.mjs</code>.</li>
+<li><code>npm test</code> + <code>npm run check:auth</code>.</li>
+<li><strong>Não</strong> mexer em <code>shop-finance.ts</code> / <code>shop-skus.ts</code> / webhook MP.</li>
+</ol>
+<h3>Fase 2 — Postgres</h3>
+<ol>
+<li>Criar base <code>miniarena</code>.</li>
+<li>Guardar <code>DATABASE_URL</code> com <code>sslmode=require</code> se o host exigir SSL.</li>
+<li>Rodar <code>DATABASE_URL=... npm run db:migrate</code> <strong>uma vez</strong> contra a base real.</li>
+<li>Confirmar tabelas: <code>&quot;user&quot;</code>, <code>arena_rooms</code>, <code>shop_wallets</code>, <code>account_onboarding</code>.</li>
+</ol>
+<h3>Fase 3a — Deploy Vercel (topologia A)</h3>
+<pre><code>
+vercel link
+# env no dashboard (todas as da §9)
+vercel --prod
+# Add Domain miniarena.com.br
+</code></pre>
+<p>Build Command já está em <code>vercel.json</code>: <code>npm run build</code>.  </p>
+<p>Node 22.x.</p>
+<h3>Fase 3b — Deploy VPS (topologia B)</h3>
+<p>No Ubuntu, como root (resumo — adaptar utilizador <code>miniarena</code>):</p>
+<pre><code>
+# Node 22
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+apt-get install -y nodejs nginx certbot python3-certbot-nginx
+
+# App
+adduser --system --group --home /opt/miniarena miniarena
+# copiar o repositório ou o artefato de build para /opt/miniarena/app
+cd /opt/miniarena/app
+npm ci --omit=dev
+# env
+install -m 600 /path/to/miniarena.env /etc/miniarena.env
+</code></pre>
+<p>systemd <code>/etc/systemd/system/miniarena.service</code>:</p>
+<pre><code>
+[Unit]
+Description=Mini Arena
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=miniarena
+WorkingDirectory=/opt/miniarena/app
+EnvironmentFile=/etc/miniarena.env
+ExecStart=/usr/bin/node /opt/miniarena/app/.output/server/index.mjs
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+</code></pre>
+<p>nginx (esqueleto):</p>
+<pre><code>
+server {
+  listen 80;
+  server_name miniarena.com.br www.miniarena.com.br;
+  return 301 https://miniarena.com.br$request_uri;
+}
+server {
+  listen 443 ssl http2;
+  server_name miniarena.com.br;
+  # ssl_certificate preenchido pelo certbot
+
+  client_max_body_size 20m;
+
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+  }
+}
+server {
+  listen 443 ssl http2;
+  server_name www.miniarena.com.br;
+  return 301 https://miniarena.com.br$request_uri;
+}
+</code></pre>
+<pre><code>
+certbot --nginx -d miniarena.com.br -d www.miniarena.com.br
+systemctl enable --now miniarena
+</code></pre>
+<p><strong>Obrigatório:</strong> <code>X-Forwarded-Proto</code> = <code>https</code>. Sem isso cookies <code>Secure</code> / HSTS / Better Auth falham atrás do nginx.</p>
+<h3>Fase 4 — Integrações (Google, Telegram, MP)</h3>
+<p>Ver §12–14. Fazer <strong>depois</strong> do HTTPS estável no apex.</p>
+<h3>Fase 5 — Cutover Telegram</h3>
+<ol>
+<li>BotFather → Mini App URL = <code>https://miniarena.com.br</code></li>
+<li><code>setWebhook</code> para <code>https://miniarena.com.br/api/telegram</code> com o mesmo <code>TELEGRAM_WEBHOOK_SECRET</code></li>
+<li>Abrir o Mini App num telemóvel real (não só o preview)</li>
+</ol>
+<h3>Fase 6 — Mercado Pago</h3>
+<ol>
+<li>Painel MP → webhook <code>https://miniarena.com.br/api/mercadopago</code></li>
+<li>Manter <code>MERCADOPAGO_ENV=test</code> no primeiro dia</li>
+<li>Uma compra teste de SKU barato (<code>g-punhado</code>)</li>
+<li>Só então produção</li>
+</ol>
+<hr>
+<h2 id="12-auth-google-nativo-sem-broker-grok">12. Auth (Google nativo, sem broker Grok)</h2>
+<p>Hoje o Google na UI chama o broker <code>auth.grok.me</code>. Isso <strong>não</strong> funciona no .com.br.</p>
+<p>No Google Cloud Console:</p>
+<ol>
+<li>APIs e serviços → Credenciais → ID do cliente OAuth (Web).</li>
+<li>Origens JavaScript autorizadas: <code>https://miniarena.com.br</code></li>
+<li>URIs de redirecionamento:  </li>
+</ol>
+<p>   <code>https://miniarena.com.br/api/auth/callback/google</code>  </p>
+<p>   (confirmar o path exacto do Better Auth no commit isolado; hoje o broker usa <code>/api/auth/oauth2/callback/grok-google</code>.)</p>
+<ol>
+<li>Ecrã de consentimento: app em teste com o e-mail do operador; depois verificação se for público.</li>
+</ol>
+<p>No código: plugin Google do Better Auth, <strong>não</strong> <code>genericOAuth</code> para Grok. <code>BETTER_AUTH_URL=https://miniarena.com.br</code>. Secret estável.</p>
+<p>E-mail/senha já está ligado (<code>emailAndPasswordEnabled = true</code>) e <strong>não</strong> depende do broker — continua a funcionar se o origin estiver em <code>trustedOrigins</code>.</p>
+<p>Não há envio de e-mail de verificação/reset neste codebase. A UI “esqueci a senha” não manda e-mail. Não é bloqueador do cutover, mas documente.</p>
+<p>Cookie de sessão:</p>
+<pre><code>
+__Host-grok-auth.session_token
+</code></pre>
+<p>Requisitos <code>__Host-</code> (o browser recusa se faltar um): HTTPS, <code>Path=/</code>, <strong>sem</strong> <code>Domain</code>, <code>Secure</code>. O prefixo <code>grok-auth</code> no nome pode ficar; renomear invalida sessões.</p>
+<hr>
+<h2 id="13-telegram-mini-app">13. Telegram Mini App</h2>
+<ul>
+<li>Bot actual: <code>Miniarenavtt_bot</code> (<code>src/lib/telegram-bot.server.ts</code>).</li>
+<li>Token: <code>TELEGRAM_BOT_TOKEN</code>. Webhook POST <code>/api/telegram</code> exige header <code>x-telegram-bot-api-secret-token</code> = <code>TELEGRAM_WEBHOOK_SECRET</code>.</li>
+<li>Script no <code>&lt;head&gt;</code>: <code>https://telegram.org/js/telegram-web-app.js</code>.</li>
+<li>CSP já permite <code>web.telegram.org</code>.</li>
+<li>Entrada <strong>sem login</strong> no Hub. Não “corrigir” isso.</li>
+<li>Selects/checkboxes nativos, alvos 44px, <code>env(safe-area-inset-*)</code>.</li>
+</ul>
+<p>Comando webhook (exemplo, depois do HTTPS):</p>
+<pre><code>
+curl -F &quot;url=https://miniarena.com.br/api/telegram&quot; \
+     -F &quot;secret_token=SEU_TELEGRAM_WEBHOOK_SECRET&quot; \
+     https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook
+</code></pre>
+<p>BotFather → Bot settings → Menu button / Mini App → URL <code>https://miniarena.com.br</code>.</p>
+<hr>
+<h2 id="14-mercado-pago">14. Mercado Pago</h2>
+<p>Não inferir ambiente pelo prefixo <code>APP_USR</code>. Usar <code>mpConfiguredEnv()</code> (<code>src/lib/shop-mp-env.ts</code>) e a env <code>MERCADOPAGO_ENV</code>.</p>
+<p>Webhook: HMAC <code>x-signature</code> + <code>x-request-id</code>. GET de health <strong>não</strong> vaza token. POST inválido responde <code>&quot;ok&quot;</code> ou <code>&quot;unauthorized&quot;</code> — não vazar stack.</p>
+<p><code>MINIARENA_STORE_URL</code> vazio ⇒ botões +Ouro/+Diamantes mostram loja indisponível. <strong>Não inventar</strong> hostname.</p>
+<p>Retorno após Checkout: <code>/pagamento/processando|sucesso|pendente|falhou?oid=...</code></p>
+<p>Manter o motor financeiro intacto. Só apontar URLs.</p>
+<hr>
+<h2 id="15-assets-dados-3d-e-limites">15. Assets, dados 3D e limites</h2>
+<p>Servir como estáticos (CDN ou nginx <code>alias</code> / o próprio Node):</p>
+<table>
+<tr><th>Path</th><th>Uso</th></tr>
+<tr><td><code>/assets/dice-box/ammo/ammo.wasm</code></td><td>física Dice Box — <strong>obrigatório</strong></td></tr>
+<tr><td><code>/assets/dice-box/themes/</code></td><td>temas clássicos da mesa</td></tr>
+<tr><td><code>/assets/dice-runtime/comum/</code></td><td>GLB + colliders COMUNS</td></tr>
+<tr><td><code>/assets/dice-photos/exotico/olho-de-dragao/</code></td><td>webp + <strong>d20.glb authored</strong> (vários MB)</td></tr>
+<tr><td><code>/media/cards/</code> <code>/media/frames/</code></td><td>cache imutável</td></tr>
+<tr><td><code>/avatars/</code> <code>/maps/</code> <code>/sounds/</code></td><td>perfil e mesa</td></tr>
+</table>
+<p>WASM: CSP precisa de <code>&#x27;wasm-unsafe-eval&#x27;</code>. Já está.</p>
+<p>Inspeção authored usa Babylon (<code>DieMini3D.tsx</code>) e <code>ImportMeshAsync</code>. GLBs grandes (~2,7 MB) — não comprimir com um compressor que parta glTF.</p>
+<p>nginx: <code>client_max_body_size 20m</code> (mapas 4 MB + futuros uploads).</p>
+<hr>
+<h2 id="16-headers-cookies-csp">16. Headers, cookies, CSP</h2>
+<p><code>src/lib/http-security.ts</code> + <code>server/middleware/security-headers.ts</code>.</p>
+<p>HSTS só quando o middleware vê HTTPS. nginx <strong>tem</strong> de mandar <code>X-Forwarded-Proto</code>.</p>
+<p>CSP actual inclui <code>https://grok.com</code> e <code>https://auth.grok.me</code>. No fork Hostinger, remover se não houver Grok. Manter:</p>
+<ul>
+<li><code>script-src</code>: <code>&#x27;self&#x27; &#x27;unsafe-inline&#x27; &#x27;wasm-unsafe-eval&#x27; https://telegram.org</code></li>
+<li><code>connect-src</code>: <code>&#x27;self&#x27; https://accounts.google.com</code> (+ <code>wss:</code> se no futuro houver)</li>
+<li><code>frame-src</code> / <code>form-action</code>: <code>accounts.google.com</code> / <code>www.mercadopago.com.br</code></li>
+<li><code>frame-ancestors</code>: <code>&#x27;self&#x27; https://web.telegram.org https://*.telegram.org</code></li>
+</ul>
+<p>Cookie da loja: <code>ma_store</code> (não é <code>__Host-</code>). Ticket 2 min, sessão 30 min, <code>player_id</code> 6 dígitos.</p>
+<hr>
+<h2 id="17-checklist-de-cutover">17. Checklist de cutover</h2>
+<p>Fazer <strong>nesta ordem</strong>. Não apontar o DNS antes dos patches 1–6.</p>
+<ul>
+<li>Branch de deploy; patches §8</li>
+<li><code>npm test</code> verde</li>
+<li>Postgres criado; <code>db:migrate</code> contra a base real</li>
+<li>Env §9 preenchidas (sem grok.me)</li>
+<li>HTTPS no apex (<code>https://miniarena.com.br</code> abre)</li>
+<li><code>www</code> → 301 apex</li>
+<li>GET <code>/api/mercadopago</code> → <code>{ok:true}</code></li>
+<li>Hub em <code>/</code> sem login</li>
+<li>Mesa: criar sala, rolar dado 3D, ammo.wasm 200</li>
+<li>Coleção → COMUNS abre hexes; EXÓTICOS 001 carrega GLB</li>
+<li>Google OAuth nativo (se o login voltar a estar visível)</li>
+<li>BotFather Mini App URL actualizada</li>
+<li>Webhook Telegram <code>getWebhookInfo</code> aponta para .com.br</li>
+<li>Webhook MP aponta para .com.br; compra teste em <code>MERCADOPAGO_ENV=test</code></li>
+<li>Headers: <code>X-Forwarded-Proto</code> / cookie Secure</li>
+<li>grok.me deixa de receber tráfego de produção (ou redirect 301 temporário)</li>
+</ul>
+<hr>
+<h2 id="18-testes-depois-de-no-ar">18. Testes depois de no ar</h2>
+<table>
+<tr><th>Teste</th><th>Esperado</th></tr>
+<tr><td>Desktop Chrome <code>https://miniarena.com.br</code></td><td>Hub, identidade dourada/roxa</td></tr>
+<tr><td>Mobile Chrome</td><td>Hub, safe-area, toques 44px</td></tr>
+<tr><td>Telegram Mini App</td><td>Hub directo, sem ecrã de login</td></tr>
+<tr><td><code>/table</code> + rolar d20</td><td>física + som</td></tr>
+<tr><td>Coleção → EXÓTICOS → Olho de Dragão</td><td>miniatura webp + inspeção GLB (olho <strong>dentro</strong> da casca, não por cima dos números)</td></tr>
+<tr><td>Compra teste <code>g-punhado</code></td><td>webhook HMAC, wallet creditada, <strong>ledger intacto</strong></td></tr>
+<tr><td><code>www.miniarena.com.br</code></td><td>301 apex</td></tr>
+<tr><td><code>http://</code></td><td>301 https</td></tr>
+</table>
+<hr>
+<h2 id="19-rollback">19. Rollback</h2>
+<ol>
+<li>DNS: voltar A/CNAME para o host anterior (Vercel/grok.me) — TTL baixo (300s) no cutover ajuda.</li>
+<li>BotFather: Mini App URL antiga.</li>
+<li>Webhook MP: URL antiga.</li>
+<li><strong>Não</strong> correr migrate “para trás”. Migrações só avançam (<code>0012_…</code>).</li>
+<li><code>BETTER_AUTH_SECRET</code> antigo se já tiverem sessões no host antigo.</li>
+</ol>
+<hr>
+<h2 id="20-invent-rio-de-arquivos-teis">20. Inventário de arquivos úteis</h2>
+<h3>Código de produto (não reescrever no cutover)</h3>
+<pre><code>
+src/routes/                 rotas TanStack
+src/components/hub/         Hub, Loja, Telegram
+src/components/table/       mesa VTT
+src/components/collection/  Coleção + DieMini3D (GLB authored)
+src/components/auth/        idade / termos / login (rota login desligada)
+src/lib/shop-*.ts           motor financeiro  ← NÃO TOCAR
+src/lib/app-urls.ts         URLs públicas via env
+src/lib/telegram.ts         BLOQUEADOR grok.me
+src/lib/db.ts               PGLite vs Postgres
+src/lib/http-security.ts    CSP / cookies
+migrations/0001–0011        schema
+public/assets/              dados, ammo.wasm, fotos
+public/media/               cartões e molduras WebP
+</code></pre>
+<h3>Build / ops</h3>
+<pre><code>
+package.json                Node 22, npm run build
+vite.config.ts              Nitro preset vercel
+vercel.json                 install + build
+scripts/migrate.mjs         aplica SQL
+scripts/fix-ssr-exports.mjs patch Vercel
+scripts/with-app-env.mjs    injeta env no Vite
+.env.example                desactualizado (ainda grok.me)
+</code></pre>
+<h3>Este documento</h3>
+<pre><code>
+docs/MIGRACAO-miniarena.com.br.md
+public/downloads/MIGRACAO-miniarena.com.br.md
+</code></pre>
+<hr>
+<h2 id="ap-ndice-o-que-dizer-outra-ferramenta">Apêndice — o que dizer à outra ferramenta</h2>
+<p>Use este bloco como prompt de execução:</p>
+<pre><code>
+Migrar o Mini Arena para https://miniarena.com.br seguindo docs/MIGRACAO-miniarena.com.br.md.
+
+NÃO alterar src/lib/shop-finance.ts, shop-skus.ts, shop-pay.ts (excepto URLs via env),
+shop-reconcile.ts, shop-catalog.ts, shop-admin.ts, src/routes/api/mercadopago.ts.
+
+NÃO recolocar login obrigatório em /.
+NÃO apontar o domínio para public_html / PHP / MySQL.
+NÃO reconstruir dados 3D no browser; GLB authored é só ImportMeshAsync.
+NÃO inventar MINIARENA_STORE_URL.
+
+Fazer: patches da §8, Postgres + migrate, HTTPS no apex, env da §9,
+webhook Telegram e MP, BotFather Mini App URL, smoke da §18.
+</code></pre>
+<p>Fim do documento.</p>
+</main>
+</body>
+</html>
